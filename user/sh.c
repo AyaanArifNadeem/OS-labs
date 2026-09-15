@@ -3,6 +3,7 @@
 #include "kernel/types.h"
 #include "user/user.h"
 #include "kernel/fcntl.h"
+#include "kernel/stat.h" 
 
 // Parsed command representation
 #define EXEC  1
@@ -134,13 +135,25 @@ runcmd(struct cmd *cmd)
 int
 getcmd(char *buf, int nbuf)
 {
-  write(2, "$ ", 2);
+  struct stat st;
+  
+  // fstat checks if fd 0 (standard input) is a console device
+  if (fstat(0, &st) == 0 && st.type == T_DEVICE) {
+    write(2, "$ ", 2);
+  }
+
   memset(buf, 0, nbuf);
   gets(buf, nbuf);
   if (buf[0] == 0) // EOF
     return -1;
   return 0;
 }
+
+
+#define MAX_HIST 10
+char cmd_history[MAX_HIST][100];
+int hist_count = 0;
+
 
 int
 main(void)
@@ -157,23 +170,50 @@ main(void)
   }
 
   // Read and run input commands.
-  while (getcmd(buf, sizeof(buf)) >= 0) {
+while (getcmd(buf, sizeof(buf)) >= 0) {
     char *cmd = buf;
     while (*cmd == ' ' || *cmd == '\t')
       cmd++;
-    if (*cmd == '\n') // is a blank command
+    if (*cmd == '\n') 
       continue;
+      
+    // NEW: Save the command to history (before we chop it up)
+    if (buf[0] != '\0') {
+      strcpy(cmd_history[hist_count % MAX_HIST], buf);
+      hist_count++;
+    }
+    
+    // Built-in: history
+    if (cmd[0] == 'h' && cmd[1] == 'i' && cmd[2] == 's' && cmd[3] == 't') {
+      int start = (hist_count > MAX_HIST) ? hist_count - MAX_HIST : 0;
+      for (int i = start; i < hist_count; i++) {
+        fprintf(1, "%d: %s", i + 1, cmd_history[i % MAX_HIST]);
+      }
+      continue;
+    }
+
+    // Built-in: cd
     if (cmd[0] == 'c' && cmd[1] == 'd' && cmd[2] == ' ') {
-      // Chdir must be called by the parent, not the child.
-      cmd[strlen(cmd) - 1] = 0; // chop \n
+      cmd[strlen(cmd) - 1] = 0; 
       if (chdir(cmd + 3) < 0)
         fprintf(2, "cannot cd %s\n", cmd + 3);
+      continue;
+    } 
+
+    // Parse and run standard commands
+    struct cmd *parsed = parsecmd(cmd);
+    
+    if (parsed->type == BACK) {
+      if (fork1() == 0) {
+        runcmd(((struct backcmd *)parsed)->cmd);
+      }
     } else {
-      if (fork1() == 0)
-        runcmd(parsecmd(cmd));
+      if (fork1() == 0) {
+        runcmd(parsed);
+      }
       wait(0);
     }
-  }
+  } 
   exit(0);
 }
 
