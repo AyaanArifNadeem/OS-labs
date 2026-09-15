@@ -4,6 +4,7 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 #include "kernel/stat.h" 
+#include "kernel/fs.h"
 
 // Parsed command representation
 #define EXEC  1
@@ -132,22 +133,66 @@ runcmd(struct cmd *cmd)
   exit(0);
 }
 
+
+
 int
 getcmd(char *buf, int nbuf)
 {
   struct stat st;
-  
-  // fstat checks if fd 0 (standard input) is a console device
   if (fstat(0, &st) == 0 && st.type == T_DEVICE) {
     write(2, "$ ", 2);
   }
 
   memset(buf, 0, nbuf);
-  gets(buf, nbuf);
-  if (buf[0] == 0) // EOF
-    return -1;
+  int i = 0;
+  char c;
+  
+  while (i + 1 < nbuf) {
+    if (read(0, &c, 1) < 1) 
+      break;
+      
+    if (c == '\n' || c == '\r') {
+      buf[i++] = '\n';
+      break;
+    }
+    
+    // TAB COMPLETION LOGIC
+    if (c == '\t') {
+      buf[i] = 0; // Temporarily end string to read the word
+      
+      // Find the start of the current word being typed
+      char *word = buf;
+      for (int j = i - 1; j >= 0; j--) {
+        if (buf[j] == ' ') { word = &buf[j+1]; break; }
+      }
+      
+      int wordlen = strlen(word);
+      if (wordlen == 0) continue;
+
+      // Open current directory and search for a match
+      int fd = open(".", O_RDONLY);
+      struct dirent de;
+      while (read(fd, &de, sizeof(de)) == sizeof(de)) {
+        if (de.inum != 0 && memcmp(de.name, word, wordlen) == 0) {
+          char *remainder = de.name + wordlen;
+          strcpy(&buf[i], remainder);
+          i += strlen(remainder);
+          write(1, remainder, strlen(remainder)); // Print missing letters
+          break; // Stop after first match
+        }
+      }
+      close(fd);
+      continue;
+    }
+    
+    // Normal character
+    buf[i++] = c;
+  }
+
+  if (buf[0] == 0) return -1;
   return 0;
 }
+
 
 
 #define MAX_HIST 10
@@ -192,13 +237,21 @@ while (getcmd(buf, sizeof(buf)) >= 0) {
       continue;
     }
 
-    // Built-in: cd
+// Built-in command: cd
     if (cmd[0] == 'c' && cmd[1] == 'd' && cmd[2] == ' ') {
-      cmd[strlen(cmd) - 1] = 0; 
+      cmd[strlen(cmd) - 1] = 0; // chop \n
       if (chdir(cmd + 3) < 0)
         fprintf(2, "cannot cd %s\n", cmd + 3);
       continue;
     } 
+
+    // NEW: Built-in command: wait
+    if (cmd[0] == 'w' && cmd[1] == 'a' && cmd[2] == 'i' && cmd[3] == 't') {
+      while(wait(0) != -1) {
+        // Keep waiting until no children are left
+      }
+      continue;
+    }
 
     // Parse and run standard commands
     struct cmd *parsed = parsecmd(cmd);
