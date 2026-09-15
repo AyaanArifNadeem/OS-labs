@@ -2,15 +2,16 @@
 #include "kernel/stat.h"
 #include "user/user.h"
 #include "kernel/fs.h"
+#include "kernel/param.h" // Needed for MAXARG
 
 char* get_filename(char *path){
     char *p;
     for(p = path + strlen(path); p >= path && *p != '/'; p--){}
-    p++;
+    p++; 
     return p;
 }
 
-void do_find(char *current_path, char *target_name){
+void do_find(char *current_path, char *target_name, char **exec_cmd, int exec_cmd_len){
     char buf[512];
     char *p;
     int fd;
@@ -30,12 +31,29 @@ void do_find(char *current_path, char *target_name){
     }
 
     char *name = get_filename(current_path);
+    
     if(strcmp(name, target_name) == 0){
-        printf("%s\n", current_path);
+        
+        if (exec_cmd_len > 0){
+            
+            if (fork() == 0){
+                char *cmd_args[MAXARG];
+                int i;
+                
+                for (i = 0; i < exec_cmd_len; i++){cmd_args[i] = exec_cmd[i];}
+                
+                cmd_args[i] = current_path;
+                cmd_args[i+1] = 0;
+
+                exec(cmd_args[0], cmd_args);
+                
+                printf("exec failed\n");
+                exit(1);
+            } else { wait(0); }
+        } else{ printf("%s\n", current_path); }
     }
 
     if(file_stat.type == T_DIR){
-        
         strcpy(buf, current_path);
         p = buf + strlen(buf);
         *p = '/';
@@ -45,8 +63,8 @@ void do_find(char *current_path, char *target_name){
             if(dir_entry.inum == 0){ continue; }
             if(strcmp(dir_entry.name, ".") == 0 || strcmp(dir_entry.name, "..") == 0){ continue; }
             memmove(p, dir_entry.name, DIRSIZ);
-            p[DIRSIZ] = 0;
-            do_find(buf, target_name);
+            p[DIRSIZ] = 0; 
+            do_find(buf, target_name, exec_cmd, exec_cmd_len);
         }
     }
     
@@ -54,12 +72,20 @@ void do_find(char *current_path, char *target_name){
 }
 
 int main(int argc, char *argv[]){
-    if(argc != 3){
-        printf("usage: find <path> <filename>\n");
+    if(argc < 3){
+        printf("usage: find <path> <filename> [-exec cmd ...]\n");
         exit(1);
     }
     
-    do_find(argv[1], argv[2]);
+    char **exec_cmd = 0;
+    int exec_cmd_len = 0;
+
+    if (argc >= 4 && strcmp(argv[3], "-exec") == 0){
+        exec_cmd = &argv[4];
+        exec_cmd_len = argc - 4;
+    }
+    
+    do_find(argv[1], argv[2], exec_cmd, exec_cmd_len);
     
     exit(0);
 }
