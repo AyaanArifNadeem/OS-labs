@@ -26,6 +26,7 @@ int pause(int);
 int uptime(void);
 int sync(void);
 int interpose(uint, const char*);
+int freemem(void);
 
 // ulib.c
 int stat(const char *, struct stat *);

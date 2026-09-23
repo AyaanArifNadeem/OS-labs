@@ -89,3 +89,24 @@ kalloc(void)
   return (void *)r;
 }
 
+
+uint64
+freemem(void)
+{
+  struct run *r;
+  uint64 count = 0;
+
+  // Lock the memory manager to prevent race conditions
+  acquire(&kmem.lock);
+  
+  r = kmem.freelist;
+  while(r) {
+    count++;
+    r = r->next;
+  }
+  
+  release(&kmem.lock);
+
+  // Multiply the free page count by 4096 (PGSIZE) to get total bytes
+  return count * 4096; 
+}
