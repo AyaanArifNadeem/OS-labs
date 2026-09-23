@@ -110,3 +110,24 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+
+uint64
+sys_interpose(void)
+{
+  struct proc *p = myproc();
+
+  // Prevent escape: if already sandboxed, deny any changes
+  if (p->interpose_mask != 0) {
+    return -1;
+  }
+
+  // argint returns void, so no error checking is needed
+  argint(0, (int*)&p->interpose_mask);
+
+  // argstr returns int, so we keep the error check
+  if(argstr(1, p->interpose_path, MAXPATH) < 0)
+    return -1;
+
+  return 0;
+}

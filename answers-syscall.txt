@@ -10,3 +10,4 @@ Q)Why does the kernel crash? Hint: look at figure 3-3 in the text; is address 0 
 Ans)The kernel crashes because it attempts to read from memory address 0 which is not mapped in the kernel's address space to intentionally catch null pointer dereference bugs. In the RISC-V privileged instruction set, an scause value of 0xd (or 13 in decimal) specifically means a Load Page Fault this confirms that the CPU crashed because it tried to load data from an unmapped page in memory.
 Q)What is the name of the process that was running when the kernel paniced? What is its process id (pid)?
 Ans) THe process name was init wiht pid 1
+
