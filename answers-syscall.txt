@@ -1,0 +1,12 @@
+Q)Looking at the backtrace output, which function called syscall?
+Ans) usertrap
+Q)What is the value of p->trapframe->a7 and what does that value represent? (Hint: look at user/init.c, the first user program xv6 starts, and its compiled assembly user/init.asm.)
+Ans) The a7 register holds the system call number, 0xf(15), syscall 15 is SYS_open, it calls open() to set up the console.
+Q)What was the previous mode that the CPU was in?
+Ans) User Mode, since the 8th bit is 0
+Q)Write down the assembly instruction the kernel is panicing at. Which register corresponds to the variable num?
+Ans) lw a3,0(zero)
+Q)Why does the kernel crash? Hint: look at figure 3-3 in the text; is address 0 mapped in the kernel address space? Is that confirmed by the value in scause above? (See description of scause in RISC-V privileged instructions)
+Ans)The kernel crashes because it attempts to read from memory address 0 which is not mapped in the kernel's address space to intentionally catch null pointer dereference bugs. In the RISC-V privileged instruction set, an scause value of 0xd (or 13 in decimal) specifically means a Load Page Fault this confirms that the CPU crashed because it tried to load data from an unmapped page in memory.
+Q)What is the name of the process that was running when the kernel paniced? What is its process id (pid)?
+Ans) THe process name was init wiht pid 1
