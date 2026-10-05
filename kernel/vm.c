@@ -147,13 +147,54 @@ walkaddr(pagetable_t pagetable, uint64 va)
 }
 
 
+// Helper function to recursively walk down the page table tree
+void 
+vmprint_walk(pagetable_t pagetable, int depth, uint64 base_va) 
+{
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    
+    if(pte & PTE_V){
+      // We DO need to reconstruct the virtual address
+      uint64 current_va = base_va | ((uint64)i << (12 + 9 * (2 - depth)));
+      
+      // Print the exact indentation requested (e.g., "..", ".. ..", ".. .. ..")
+      for(int j = 0; j <= depth; j++){
+        if (j == 0) printk("..");
+        else printk(" ..");
+      }
+      
+      uint64 physical_addr = PTE2PA(pte);
+      
+      // Print the full 64-bit virtual address
+      printk("%p: pte %p pa %p", (void*)current_va, (void*)pte, (void*)physical_addr);
+      
+      if((pte & (PTE_R | PTE_W | PTE_X)) != 0){
+         printk(" ");
+         if(pte & PTE_R) printk("R");
+         if(pte & PTE_W) printk("W");
+         if(pte & PTE_X) printk("X");
+         if(pte & PTE_U) printk("U");
+      }
+      printk("\n");
+
+      if((pte & (PTE_R | PTE_W | PTE_X)) == 0){
+        uint64 child = PTE2PA(pte);
+        vmprint_walk((pagetable_t)child, depth + 1, current_va);
+      }
+    }
+  }
+}
+
 #if defined(LAB_PGTBL) || defined(SOL_MMAP) || defined(SOL_COW)
 void
 vmprint(pagetable_t pagetable)
 {
-  // your code here
+  printk("page table %p\n", (void*)pagetable); 
+  vmprint_walk(pagetable, 0, 0);        
 }
 #endif
+
 
 
 // add a mapping to the kernel page table.
