@@ -155,18 +155,13 @@ vmprint_walk(pagetable_t pagetable, int depth, uint64 base_va)
     pte_t pte = pagetable[i];
     
     if(pte & PTE_V){
-      // We DO need to reconstruct the virtual address
       uint64 current_va = base_va | ((uint64)i << (12 + 9 * (2 - depth)));
       
-      // Print the exact indentation requested (e.g., "..", ".. ..", ".. .. ..")
-      for(int j = 0; j <= depth; j++){
-        if (j == 0) printk("..");
-        else printk(" ..");
-      }
+      for(int j = 0; j <= depth; j++)
+        printk(" ..");	
       
       uint64 physical_addr = PTE2PA(pte);
       
-      // Print the full 64-bit virtual address
       printk("%p: pte %p pa %p", (void*)current_va, (void*)pte, (void*)physical_addr);
       
       if((pte & (PTE_R | PTE_W | PTE_X)) != 0){
