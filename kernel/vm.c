@@ -170,6 +170,7 @@ vmprint_walk(pagetable_t pagetable, int depth, uint64 base_va)
          if(pte & PTE_W) printk("W");
          if(pte & PTE_X) printk("X");
          if(pte & PTE_U) printk("U");
+         if(depth == 1) printk(" (superpage)");
       }
       printk("\n");
 
@@ -190,7 +191,55 @@ vmprint(pagetable_t pagetable)
 }
 #endif
 
+// Return the level-1 PTE for va, allocating the level-2 -> level-1
+// table if needed.
+static pte_t *
+kwalk_l1(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte = &pagetable[PX(2, va)];
+  if (*pte & PTE_V) {
+    pagetable = (pagetable_t)PTE2PA(*pte);
+  } else {
+    if ((pagetable = (pagetable_t)kalloc()) == 0)
+      return 0;
+    memset(pagetable, 0, PGSIZE);
+    *pte = PA2PTE(pagetable) | PTE_V;
+  }
+  return &pagetable[PX(1, va)];
+}
 
+// Like mappages, but uses 2MB superpages where va and pa are both
+// 2MB-aligned and at least 2MB remain. Kernel use only.
+static int
+kmappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+{
+  if ((va % PGSIZE) != 0 || (size % PGSIZE) != 0 || size == 0)
+    panic("kmappages: bad args");
+
+  uint64 a = va, end = va + size;
+  while (a < end) {
+    pte_t *pte;
+    if (a % SUPERPGSIZE == 0 && pa % SUPERPGSIZE == 0 &&
+        end - a >= SUPERPGSIZE) {
+      if ((pte = kwalk_l1(pagetable, a)) == 0)
+        return -1;
+      if (*pte & PTE_V)
+        panic("kmappages: remap (super)");
+      *pte = PA2PTE(pa) | perm | PTE_V;
+      a += SUPERPGSIZE;
+      pa += SUPERPGSIZE;
+    } else {
+      if ((pte = walk(pagetable, a, 1)) == 0)
+        return -1;
+      if (*pte & PTE_V)
+        panic("kmappages: remap");
+      *pte = PA2PTE(pa) | perm | PTE_V;
+      a += PGSIZE;
+      pa += PGSIZE;
+    }
+  }
+  return 0;
+}
 
 // add a mapping to the kernel page table.
 // only used when booting.
@@ -198,7 +247,7 @@ vmprint(pagetable_t pagetable)
 void
 kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 {
-  if (mappages(kpgtbl, va, sz, pa, perm) != 0)
+  if (kmappages(kpgtbl, va, sz, pa, perm) != 0)
     panic("kvmmap");
 }
 
