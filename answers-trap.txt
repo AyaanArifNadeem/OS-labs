@@ -1,0 +1,11 @@
+Q1)a regs are used to pass func args, in main reg a2 holds the value 13(line49 = li a2,13).
+
+Q2)no calls to f or g in assembly code for main. the compiler optimized the code by evaluating f(8)+1 at compile time and inlined the result directly using the instruction li a1,12 on line 50.
+
+Q3)The function printf is located at address 0x6fe. This is shown on line 53 in main, where the jump instruction targets 6fe <printf>.
+
+Q4)it will hold the address of the next instruction to be executed after printf returns. Looking at line 53, the jump to printf is at address 0x30, and the very next instruction (li a0,0) is at address 0x34. Therefore, ra will hold 0x34.
+
+Q5)"HE110 World",if instead big-endian, would set i to 0x726c6400 to yield the same output,would not need to change 57616 to a different value because it is passed by value directly in a register.
+
+Q6)An unpredictable garbage value will be printed after y=, because the printf function expects a third argument to satisfy the second %d format specifier. Because no argument was provided, the program simply reads and prints whatever leftover data happens to be stored in the a2 register, which is where RISC-V looks for the third argument.
