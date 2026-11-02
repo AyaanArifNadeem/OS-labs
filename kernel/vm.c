@@ -301,29 +301,39 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
-  for (i = 0; i < sz; i += PGSIZE) {
-    if ((pte = walk(old, i, 0)) == 0)
-      continue; // page table entry hasn't been allocated
-    if ((*pte & PTE_V) == 0)
-      continue; // physical page hasn't been allocated
+  for(i = 0; i < sz; i += PGSIZE){
+    if((pte = walk(old, i, 0)) == 0)
+      panic("uvmcopy: pte should exist");
+    if((*pte & PTE_V) == 0)
+      panic("uvmcopy: page not present");
+    
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if ((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char *)pa, PGSIZE);
-    if (mappages(new, i, PGSIZE, (uint64)mem, flags) != 0) {
-      kfree(mem);
+
+// If the page is writable, clear the write bit and set COW flag
+if(flags & PTE_W) {
+  flags = (flags & ~PTE_W) | PTE_COW;
+  
+  // Safely update flags without corrupting the PPN
+  *pte = (*pte & ~PTE_W) | PTE_COW; 
+}
+
+    // Map the shared physical page into the child's page table
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       goto err;
     }
+    
+    // Increment the reference count for the shared page
+    kaddref((void*)pa);
   }
   return 0;
 
-err:
+ err:
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
+
 
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
@@ -351,6 +361,13 @@ copyout(pagetable_t pagetable, uint64 psz, uint64 dstva, char *src, uint64 len)
     va0 = PGROUNDDOWN(dstva);
     if (va0 >= MAXVA)
       return -1;
+
+	pte = walk(pagetable, va0, 0);
+    if(pte != 0 && (*pte & PTE_V) && (*pte & PTE_U) && (*pte & PTE_COW)) {
+      // Force a page allocation for the COW page
+      if(cow_fault(pagetable, va0) < 0)
+        return -1;
+    }
 
     pa0 = walkaddr(pagetable, va0);
     if (pa0 == 0) {
@@ -487,5 +504,43 @@ ismapped(pagetable_t pagetable, uint64 va)
   if (*pte & PTE_V) {
     return 1;
   }
+  return 0;
+}
+
+int
+cow_fault(pagetable_t pagetable, uint64 va)
+{
+  if(va >= MAXVA) return -1;
+  
+  // Round down to the page boundary
+  va = PGROUNDDOWN(va);
+  
+  pte_t *pte = walk(pagetable, va, 0);
+  if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 || (*pte & PTE_COW) == 0)
+    return -1;
+    
+  uint64 pa = PTE2PA(*pte);
+  
+  // Allocate a new page
+  char *mem = kalloc();
+  if(mem == 0)
+    return -1;
+    
+  // Copy the old page data to the new page
+  memmove(mem, (char*)pa, PGSIZE);
+
+  // Map the new page with read and write permissions
+  uint flags = PTE_FLAGS(*pte);
+  flags = (flags & ~PTE_COW) | PTE_W;
+  
+  // Clear the old mapping
+  uvmunmap(pagetable, va, 1, 1);
+    
+
+  if(mappages(pagetable, va, PGSIZE, (uint64)mem, flags) != 0){
+    kfree(mem);
+    return -1;
+  }
+  
   return 0;
 }

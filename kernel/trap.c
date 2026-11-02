@@ -66,7 +66,19 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if ((which_dev = devintr()) != 0) {
+  } else if(r_scause() == 15) {
+    // Store Page Fault (potentially COW)
+    uint64 fault_va = r_stval();
+    if(cow_fault(p->pagetable, fault_va) < 0)
+      p->killed = 1;
+  } else if(r_scause() == 12 || r_scause() == 13) {
+    // Instruction or Load page fault from user space.
+    // If it's an illegal access (like touching kernel memory 0x80000000),
+    // kill the user process quietly without printing an unexpected scause panic.
+    p->killed = 1;
+  } else if((which_dev = devintr()) != 0){
+
+
     // ok
   } else if ((r_scause() == 15 || r_scause() == 13) &&
              vmfault(p->pagetable, p->sz, r_stval(),
